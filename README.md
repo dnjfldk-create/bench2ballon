@@ -2,7 +2,7 @@
 
 16세 유스부터 은퇴까지, 한 축구선수의 인생을 사는 브라우저 시뮬레이션 게임이에요.
 
-▶ 플레이: https://dnjfldk-create.github.io/bench2ballon/
+▶ 플레이: https://footballer-life.vercel.app/
 
 - 설치 없이 브라우저에서 바로 플레이 (모바일 지원)
 - 진행 상황은 각자 브라우저에 저장돼요
