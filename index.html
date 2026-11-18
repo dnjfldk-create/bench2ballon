@@ -765,6 +765,7 @@
   .aw-li em{font-style:normal;font-weight:800;margin-left:auto;white-space:nowrap;color:var(--txt)}
   .aw-li.me{background:color-mix(in srgb,var(--acc) 24%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--acc) 55%,transparent)}
   .offer .zt{white-space:nowrap} .ntrow.n4{grid-template-columns:repeat(4,minmax(0,1fr))} .ntrow.n4 b{font-size:20px}
+  .rankrow.me{background:color-mix(in srgb,var(--acc) 18%,transparent);border-radius:10px} .onl input{padding:10px 12px;border-radius:10px;border:1px solid var(--line2);background:var(--panel2);color:var(--txt);font-size:15px}
   .mkey{display:none;margin-top:10px;padding:12px;border-radius:14px;background:var(--panel2);border:2px solid var(--gold);box-shadow:0 6px 22px rgba(0,0,0,.22)}
   .mkey.on{display:block;animation:mkIn .25s ease-out} @keyframes mkIn{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
   .mk-h{display:flex;justify-content:space-between;align-items:center;font-size:14px} .mk-h b{font-weight:900;color:var(--txt)} .mk-h span{font-weight:800;color:var(--sub);font-size:13px}
@@ -6326,28 +6327,73 @@ function renderRetire(){
     <div class="card" style="margin-top:8px">${G.seasonRecords.length?G.seasonRecords.slice().reverse().map(r=>`<div class="srow"><div class="c">${r.age}세 · ${r.club}<small>${r.league}${r.pos?` ${r.pos}위`:""}${r.role?` · ${r.role}`:""}${r.aw?` · ${r.aw}`:""}</small></div><div class="st2">${r.apps}경기${G.pos!=="GK"?`<br>${r.goals}골 ${r.assists}도움`:""} · OVR ${r.ovr}</div></div>`).join(""):`<div class="muted" style="padding:10px 0">기록 없음</div>`}</div></details>
   <details><summary>커리어 타임라인 펼치기 (이벤트 전체)</summary>
     <div class="card" style="margin-top:8px"><ul class="log" style="max-height:340px">${G.log.map(e=>`<li class="${e.mile?"mile":""}"><span class="yr">${e.age}세</span><span>${e.txt}</span></li>`).join("")}</ul></div></details>
+  ${onlineCardHtml()}
   <div class="row"><button class="primary" id="toRank" style="flex:1">랭킹 확인</button><button class="ghost" id="again">새 커리어</button></div>`;
-  bindCabinet();
+  bindCabinet();bindOnlineCard();
   if(G.debuted)toast("은퇴 기록이 랭킹에 등록되었습니다");
   {const fa=$("#filmAgain");if(fa)fa.onclick=()=>{G.filmPending=true;render();};}
   $("#toRank").onclick=renderRank;$("#again").onclick=()=>{try{localStorage.removeItem(SAVE);}catch(e){}G=null;draft={name:"",nat:"대한민국",start:"대한민국",pos:"ST",avatar:0,cands:[],sel:0};render();};
 }
+// ===== 온라인 랭킹 (v8.2): 은퇴 기록을 구글 폼으로 올리고, 공개된 응답 시트(CSV)를 읽어 전체 순위를 보여 줌 =====
+const ONLINE={form:'https://docs.google.com/forms/d/e/1FAIpQLScNtOmdYqtUyOf-SOaLA11J7-4OaCYsg-nEL_ojGYEryGguWQ/formResponse',eNick:'entry.1576345552',eData:'entry.1500082270',
+  csv:'https://docs.google.com/spreadsheets/d/1fZTFWS-TZtpSw_u_uDMKPNUX0Mq4rV7GAgJIUzoED4E/gviz/tq?tqx=out:csv&gid=1199695889'};
+const MYIDS='b2b_myids';
+const myIds=()=>{try{return JSON.parse(localStorage.getItem(MYIDS)||'[]');}catch(e){return [];}};
+function onlineEntry(){const c=G.car;G.cid=G.cid||(Date.now().toString(36)+Math.random().toString(36).slice(2,8));
+  const pj=G.postJob&&POST_JOBS[G.postJob.i];
+  return {v:1,id:G.cid,ballon:c.ballon||0,maxOvr:c.maxOvr,awards:c.topScorer||0,atkPts:(c.goals||0)+(c.assists||0),goals:c.goals||0,assists:c.assists||0,apps:c.apps||0,trophies:(c.trophies||0)+(c.natTitles||0),
+    caps:c.caps||0,pos:G.pos,nat:G.nat,avatar:G.avatar,club:G.club,age:G.age,job:pj?`${pj.ic} ${pj.nm}`:'',tier:careerTier().name,leg:Object.values(G.legend||{}).some(x=>x.retNum)?2:Object.values(G.legend||{}).some(x=>x.leg)?1:0};}
+async function onlineSubmit(nick){const b=new URLSearchParams();b.append(ONLINE.eNick,nick);b.append(ONLINE.eData,JSON.stringify(onlineEntry()));
+  await fetch(ONLINE.form,{method:'POST',mode:'no-cors',body:b});   // 응답 내용은 못 읽음(no-cors) — 보내지면 성공으로 봄
+  const ids=myIds();if(!ids.includes(G.cid)){ids.push(G.cid);try{localStorage.setItem(MYIDS,JSON.stringify(ids.slice(-200)));}catch(e){}}
+  G.onlineSent=nick;saveGame();}
+function parseCSV(t){const R=[];let row=[],f='',q=false;for(let i=0;i<t.length;i++){const ch=t[i];
+  if(q){if(ch==='"'){if(t[i+1]==='"'){f+='"';i++;}else q=false;}else f+=ch;}
+  else if(ch==='"')q=true;else if(ch===','){row.push(f);f='';}else if(ch==='\n'){row.push(f);R.push(row);row=[];f='';}else if(ch!=='\r')f+=ch;}
+  if(f||row.length){row.push(f);R.push(row);}return R;}
+const onNum=(v,lo,hi)=>{v=Number(v);return isFinite(v)?Math.max(lo,Math.min(hi,Math.round(v))):lo;};
+async function onlineFetch(){const r=await fetch(ONLINE.csv+'&_='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('http '+r.status);
+  const rows=parseCSV(await r.text()).slice(1),seen=new Set(),out=[];
+  rows.forEach(([ts,nick,data])=>{let d;try{d=JSON.parse(data||'');}catch(e){return;}if(!d||d.test||!nick)return;const id=String(d.id||'');if(id&&seen.has(id))return;if(id)seen.add(id);
+    out.push({ts,nick:String(nick).slice(0,12),id,ballon:onNum(d.ballon,0,25),maxOvr:onNum(d.maxOvr,40,99),awards:onNum(d.awards,0,30),atkPts:onNum(d.atkPts,0,2500),goals:onNum(d.goals,0,1600),assists:onNum(d.assists,0,900),
+      apps:onNum(d.apps,0,1300),trophies:onNum(d.trophies,0,90),pos:String(d.pos||'').slice(0,3),nat:String(d.nat||'').slice(0,10),avatar:onNum(d.avatar,0,AVATARS.length-1),club:String(d.club||'').slice(0,20),
+      age:onNum(d.age,16,46),job:String(d.job||'').slice(0,24),tier:String(d.tier||'').slice(0,12),leg:onNum(d.leg,0,2)});});
+  return out.sort(cmp);}
+// 은퇴 화면: 온라인 랭킹 등록 카드
+function onlineCardHtml(){if(!G.debuted)return '';const sent=G.onlineSent;
+  return `<div class="card onl"><h2>🌍 온라인 랭킹</h2>${sent?`<div class="hint">「${fanEsc(sent)}」 이름으로 등록했어요. 다른 사람들 기록과 비교해 보세요.</div><button class="primary" id="onlView" style="width:100%;margin-top:10px">전체 랭킹 보기 →</button>`
+    :`<div class="hint">이번 커리어 기록을 다른 사람들과 겨뤄 볼까요? 닉네임과 커리어 기록(발롱·OVR·골·우승·은퇴 후 직업 등)만 올라가요.</div>
+    <div class="row" style="margin-top:10px;gap:8px"><input id="onlNick" maxlength="12" value="${fanEsc(String(G.name||'').slice(0,12))}" placeholder="닉네임 (12자)" style="flex:1;min-width:0"><button class="primary" id="onlSend">등록</button></div>`}</div>`;}
+function bindOnlineCard(){const s=$('#onlSend');if(s)s.onclick=async()=>{const n=String(($('#onlNick')||{}).value||'').replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,12);if(!n){toast('닉네임을 입력해 주세요');return;}
+    s.disabled=true;s.textContent='등록 중…';try{await onlineSubmit(n);toast('온라인 랭킹에 등록했어요');renderRetire();}catch(e){s.disabled=false;s.textContent='등록';toast('등록하지 못했어요. 인터넷 연결을 확인해 주세요');}};
+  const v=$('#onlView');if(v)v.onclick=()=>renderRank('online');}
+// 랭킹 화면: 전체(온라인) 탭
+async function renderOnlineRank(){const box=$('#onlBox');if(!box)return;box.innerHTML='<div class="muted" style="padding:16px 0;text-align:center">전체 랭킹을 불러오는 중…</div>';
+  let L;try{L=await onlineFetch();}catch(e){box.innerHTML='<div class="muted" style="padding:16px 0;text-align:center">랭킹을 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.<br><small>온라인 랭킹은 footballer-life.vercel.app 에서 이용할 수 있어요.</small></div>';return;}
+  if(!document.body.contains(box))return;const mine=new Set(myIds()),me=L.findIndex(p=>mine.has(p.id));
+  box.innerHTML=`<div class="hint" style="margin-bottom:8px">전체 ${L.length}명 · 발롱도르 → 최고 OVR → 득점왕 → 공격P 순${me>=0?` · 내 최고 기록 ${me+1}위`:''}</div>`+
+    (L.length?L.slice(0,50).map((p,i)=>`<div class="rankrow ${mine.has(p.id)?'me':''}"><div class="n">${i<3?['🥇','🥈','🥉'][i]:i+1}</div>${avatarSVG(p.avatar||0,34)}<div class="nm">${fanEsc(p.nick)}${p.leg===2?' 👕':p.leg?' 🏟️':''} <small>${fanEsc(POS_KR[p.pos]||p.pos)} · ${fanEsc(p.nat)}${p.job?` · ${fanEsc(p.job)}`:''}</small></div><div style="text-align:right"><div class="b">${p.ballon?'🏆×'+p.ballon+' ':''}OVR ${p.maxOvr}</div><div class="muted" style="font-size:11px">트로피 ${p.trophies} · ${p.pos==='GK'?`${p.apps}경기`:`${p.goals}골 ${p.assists}도움`}</div></div></div>`).join('')
+      :'<div class="muted" style="padding:14px 0;text-align:center">아직 등록된 기록이 없어요. 첫 번째 주인공이 되어 보세요!</div>');}
 //==== 랭킹 ====
 function cmp(a,b){return b.ballon-a.ballon||b.maxOvr-a.maxOvr||b.awards-a.awards||b.atkPts-a.atkPts;}
-function renderRank(){scrTop('rank');
+const rankToGame=()=>{if(G&&!G.retired)render();else{G=null;draft={name:'',nat:'대한민국',start:'대한민국',pos:'ST',avatar:0,cands:[],sel:0};render();}};
+function renderRank(mode){scrTop('rank');
+  if(mode==='online'){app.innerHTML=`<div class="tabs"><button id="rkLocal">내 기록</button><button class="on">🌍 전체 랭킹</button><button id="toGame">${G&&!G.retired?'게임으로':'새 커리어'}</button></div>
+    <div class="card"><h2>🌍 전체 랭킹 · 모두의 은퇴 기록</h2><div id="onlBox"></div></div><button class="ghost" id="onlRe" style="width:100%">새로고침</button>`;
+    $('#rkLocal').onclick=()=>renderRank();$('#onlRe').onclick=()=>renderOnlineRank();$('#toGame').onclick=rankToGame;renderOnlineRank();return;}
   const board=getBoard().slice().sort(cmp),slots=["GK","LB","CB","CB","RB","DM","CM","AM","LW","ST","RW"],used=new Set();
   const xi=slots.map(slot=>{const cand=board.filter(p=>p.pos===slot&&!used.has(p)).sort((a,b)=>b.maxOvr-a.maxOvr)[0];if(cand){used.add(cand);return{slot,p:cand};}return{slot,p:null};});
-  app.innerHTML=`<div class="tabs"><button class="on">일일 랭킹</button><button id="toGame">${G&&!G.retired?"게임으로":"새 커리어"}</button></div>
+  app.innerHTML=`<div class="tabs"><button class="on">내 기록</button><button id="rkOnline">🌍 전체 랭킹</button><button id="toGame">${G&&!G.retired?"게임으로":"새 커리어"}</button></div>
   <div class="card"><h2>은퇴 선수 랭킹 · 발롱→최고OVR→개인상→공격P</h2>
     ${board.length?board.slice(0,20).map((p,i)=>`<div class="rankrow"><div class="n">${i+1}</div>${avatarSVG(p.avatar||0,34)}<div class="nm">${p.name} <small>${POS_KR[p.pos]||p.pos} · ${p.nat}</small></div><div style="text-align:right"><div class="b">${p.ballon?"🏆×"+p.ballon+" ":""}OVR ${p.maxOvr}</div><div class="muted" style="font-size:11px">${p.peakValue?"💰"+money(p.peakValue):""} · ${p.goals+p.assists}P</div></div></div>`).join(""):`<div class="muted" style="padding:14px 0;text-align:center">아직 은퇴한 선수가 없어요.</div>`}</div>
   <div class="card"><h2>베스트 일레븐 (4-3-3)</h2><div class="xi">${xi.map(x=>`<div class="slot ${x.p?"":"empty"}"><b>${x.slot}</b><div class="nm">${x.p?x.p.name:"—"}</div>${x.p?`<div class="muted" style="font-size:10px">${x.p.maxOvr}</div>`:""}</div>`).join("")}</div></div>
   <div class="row"><button class="ghost" id="exp" style="flex:1">저장 내보내기</button><button class="ghost" id="imp" style="flex:1">불러오기</button><button class="ghost" id="clr">랭킹 초기화</button></div><input type="file" id="impFile" accept="application/json" hidden>`;
-  $("#toGame").onclick=()=>{if(G&&!G.retired)render();else{G=null;draft={name:"",nat:"대한민국",start:"대한민국",pos:"ST",avatar:0,cands:[],sel:0};render();}};
+  $("#toGame").onclick=rankToGame;$("#rkOnline").onclick=()=>renderRank('online');
   $("#exp").onclick=exportSave;$("#imp").onclick=()=>$("#impFile").click();$("#impFile").onchange=importSave;$("#clr").onclick=()=>askConfirm("랭킹 기록을 모두 지울까요?","지우기",()=>{try{localStorage.removeItem(BOARD);}catch(e){}renderRank();});
 }
 function exportSave(){const blob=new Blob([JSON.stringify({save:loadGame(),board:getBoard()})],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="bench2ballon_save.json";a.click();toast("저장 파일을 내보냈습니다");}
 function importSave(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.save)localStorage.setItem(SAVE,JSON.stringify(d.save));if(d.board)localStorage.setItem(BOARD,JSON.stringify(d.board));toast("불러오기 완료");G=null;render();}catch(x){toast("파일을 읽을 수 없습니다");}};r.readAsText(f);}
-$("#navRank").onclick=renderRank;
+$("#navRank").onclick=()=>renderRank();
 document.querySelectorAll('#tabbar button').forEach(b=>b.onclick=()=>{if(UI_TAB===b.dataset.t)return;setGameTab(b.dataset.t);try{window.scrollTo(0,0);}catch(e){}});
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('button')&&navigator.vibrate)try{navigator.vibrate(8);}catch(x){}},true);   // 안드로이드: 버튼 누를 때 짧은 진동
 {const L=document.getElementById('abLogo');if(L)L.innerHTML=trophyImg({art:'ballon'},1);const S=document.getElementById('spLogo');if(S)S.innerHTML=trophyImg({art:'ballon'},5);}
